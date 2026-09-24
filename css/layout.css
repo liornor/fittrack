@@ -1,0 +1,88 @@
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: calc(var(--header-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(var(--space-2), env(safe-area-inset-right)) 0 max(var(--space-2), env(safe-area-inset-left));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  flex: 1;
+  padding-left: var(--space-2);
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#header-back:not([hidden]) + h1 { padding-left: 0; }
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-4) max(var(--space-4), env(safe-area-inset-right))
+    calc(var(--nav-h) + env(safe-area-inset-bottom) + 96px) max(var(--space-4), env(safe-area-inset-left));
+}
+
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.bottom-nav a {
+  flex: 1;
+  max-width: 120px;
+  min-height: var(--nav-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.bottom-nav a[aria-current="page"] { color: var(--accent); }
+.bottom-nav .icon { width: 24px; height: 24px; }
+
+/* Primary action pinned above the tab bar, within thumb reach. */
+.sticky-action {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+  z-index: 5;
+  padding: var(--space-5) var(--space-4) var(--space-3);
+  background: linear-gradient(transparent, var(--bg) 40%);
+  pointer-events: none;
+}
+
+.sticky-action .btn {
+  display: flex;
+  max-width: 608px;
+  margin: 0 auto;
+  pointer-events: auto;
+}
+
+/* On Android the keyboard shrinks the viewport, which would push fixed bars
+   over the field being typed in. Hide them while typing. */
+body:has(input:focus, textarea:focus) .bottom-nav,
+body:has(input:focus, textarea:focus) .sticky-action {
+  display: none;
+}

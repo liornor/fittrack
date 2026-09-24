@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FitTrack tests</title>
+  <style>
+    body { font: 15px/1.4 system-ui, sans-serif; margin: 16px; background: #fff; color: #16181d; }
+    li { margin: 4px 0; }
+    .pass { color: #15803d; }
+    .fail { color: #b91c1c; font-weight: 600; }
+    code { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1 id="summary">Running…</h1>
+  <ul id="results"></ul>
+
+  <!-- Only the storage layer and what it depends on. Real localStorage is never touched. -->
+  <script src="js/core/dates.js"></script>
+  <script src="js/core/migrations.js"></script>
+  <script src="js/core/storage.js"></script>
+  <script>
+    'use strict';
+    const FT = window.FitTrack;
+    const S = FT.storage;
+    const KEY = 'fittrack:db';
+    S.defineModule('workouts');
+    S.defineModule('metrics');
+
+    function memoryBackend() {
+      const map = new Map();
+      return {
+        map,
+        limit: Infinity,
+        getItem(k) { return map.has(k) ? map.get(k) : null; },
+        setItem(k, v) {
+          v = String(v);
+          let size = v.length;
+          for (const [key, val] of map) if (key !== k) size += val.length;
+          if (size > this.limit) { const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; }
+          map.set(k, v);
+        },
+        removeItem(k) { map.delete(k); }
+      };
+    }
+
+    function fresh() { const b = memoryBackend(); S.init({ backend: b }); return b; }
+
+    const results = [];
+    function test(name, fn) {
+      try { fn(); results.push({ name, ok: true }); }
+      catch (err) { results.push({ name, ok: false, message: err.message }); }
+    }
+    function assert(cond, message) { if (!cond) throw new Error(message || 'assertion failed'); }
+    function eq(actual, expected, message) {
+      const a = JSON.stringify(actual), e = JSON.stringify(expected);
+      if (a !== e) throw new Error(`${message ? message + ': ' : ''}expected ${e}, got ${a}`);
+    }
+    function throws(fn, pattern) {
+      try { fn(); } catch (err) {
+        if (pattern && !pattern.test(err.message)) throw new Error(`wrong error: ${err.message}`);
+        return;
+      }
+      throw new Error('expected an error');
+    }
+
+    // ---------- dates ----------
+
+    test('local date stays on the same day late at night', () => {
+      eq(FT.dates.toLocalDate(new Date(2026, 8, 24, 23, 45)), '2026-09-24');
+    });
+    test('isValid rejects impossible dates and wrong formats', () => {
+      assert(FT.dates.isValid('2026-02-28'));
+      assert(!FT.dates.isValid('2026-02-30'));
+      assert(!FT.dates.isValid('24/09/2026'));
+      assert(!FT.dates.isValid(undefined));
+    });
+    test('daysBetween across a daylight-saving change', () => {
+      eq(FT.dates.daysBetween('2026-03-01', '2026-04-01'), 31);
+      eq(FT.dates.daysBetween('2026-10-20', '2026-11-05'), 16);
+    });
+
+    // ---------- entries ----------
+
+    test('fresh start has empty sections for every defined module', () => {
+      fresh();
+      eq(S.list('workouts'), []);
+      eq(S.counts(), { workouts: 0, metrics: 0 });
+    });
+    test('add fills id and timestamps and survives a reload', () => {
+      const b = fresh();
+      const e = S.add('workouts', { date: '2026-09-20', title: 'Legs' });
+      assert(typeof e.id === 'string' && e.id.length > 8, 'id');
+      assert(e.createdAt && e.updatedAt, 'timestamps');
+      S.init({ backend: b });
+      eq(S.get('workouts', e.id).title, 'Legs');
+    });
+    test('add defaults to today and rejects invalid dates', () => {
+      fresh();
+      eq(S.add('workouts', {}).date, FT.dates.today());
+      throws(() => S.add('workouts', { date: '2026-13-01' }), /Invalid date/);
+      eq(S.list('workouts').length, 1);
+    });
+    test('unknown module is an error', () => {
+      fresh();
+      throws(() => S.add('nope', {}), /Unknown module/);
+    });
+    test('update merges fields and protects id/createdAt', () => {
+      fresh();
+      const e = S.add('workouts', { date: '2026-09-20', title: 'A', notes: 'n' });
+      const u = S.update('workouts', e.id, { title: 'B', id: 'hacked', createdAt: 'x' });
+      eq([u.id, u.createdAt, u.title, u.notes], [e.id, e.createdAt, 'B', 'n']);
+      throws(() => S.update('workouts', e.id, { date: 'bad' }), /Invalid date/);
+      throws(() => S.update('workouts', 'missing', {}), /No entry/);
+    });
+    test('list sorts newest first and filters by range', () => {
+      fresh();
+      for (const d of ['2026-09-01', '2026-09-15', '2026-08-30']) S.add('workouts', { date: d });
+      eq(S.list('workouts').map(e => e.date), ['2026-09-15', '2026-09-01', '2026-08-30']);
+      eq(S.list('workouts', { from: '2026-09-01', to: '2026-09-10' }).map(e => e.date), ['2026-09-01']);
+    });
+    test('returned objects are copies', () => {
+      fresh();
+      const e = S.add('workouts', { date: '2026-09-20', exercises: [{ name: 'Squat' }] });
+      S.list('workouts')[0].exercises[0].name = 'changed';
+      e.title = 'changed';
+      eq(S.get('workouts', e.id).exercises[0].name, 'Squat');
+      eq(S.get('workouts', e.id).title, undefined);
+    });
+    test('remove', () => {
+      fresh();
+      const e = S.add('workouts', { date: '2026-09-20' });
+      eq(S.remove('workouts', e.id), true);
+      eq(S.remove('workouts', e.id), false);
+      eq(S.list('workouts'), []);
+    });
+    test('items and settings', () => {
+      const b = fresh();
+      S.saveItems('metrics', [{ id: 'x', name: 'Waist' }]);
+      S.updateSettings({ weightUnit: 'lb' });
+      S.init({ backend: b });
+      eq(S.getItems('metrics'), [{ id: 'x', name: 'Waist' }]);
+      eq(S.getSettings().weightUnit, 'lb');
+    });
+    test('subscribers are notified with the section name', () => {
+      fresh();
+      const seen = [];
+      const off = S.subscribe(s => seen.push(s));
+      S.add('workouts', { date: '2026-09-20' });
+      off();
+      S.add('workouts', { date: '2026-09-21' });
+      eq(seen, ['workouts']);
+    });
+
+    // ---------- failures ----------
+
+    test('storage full: change is rejected and memory rolls back', () => {
+      const b = fresh();
+      S.add('workouts', { date: '2026-09-20' });
+      b.limit = b.map.get(KEY).length + 500;
+      throws(() => S.add('workouts', { date: '2026-09-21', notes: 'x'.repeat(1000) }), /Storage is full/);
+      eq(S.list('workouts').length, 1);
+    });
+    test('export still works when storage is full', () => {
+      const b = fresh();
+      S.add('workouts', { date: '2026-09-20' });
+      b.limit = b.map.get(KEY).length;
+      const json = S.exportData();
+      eq(JSON.parse(json).data.modules.workouts.entries.length, 1);
+    });
+    test('unreadable data is kept aside, app starts empty', () => {
+      const b = memoryBackend();
+      b.map.set(KEY, '{not json');
+      S.init({ backend: b });
+      eq(S.list('workouts'), []);
+      eq(S.getCorruptData(), '{not json');
+      S.clearCorruptData();
+      eq(S.getCorruptData(), null);
+    });
+    test('if the unreadable copy cannot be kept, init fails without writing', () => {
+      const b = memoryBackend();
+      b.map.set(KEY, '{not json');
+      b.limit = 5;
+      throws(() => S.init({ backend: b }));
+      eq(b.map.get(KEY), '{not json');
+    });
+
+    // ---------- migrations ----------
+
+    test('version 0 data (no schemaVersion) is upgraded', () => {
+      const b = memoryBackend();
+      b.map.set(KEY, JSON.stringify({ modules: { workouts: { items: [], entries: [{ id: 'a', date: '2026-01-02' }] } } }));
+      S.init({ backend: b });
+      eq(S.get('workouts', 'a').date, '2026-01-02');
+      eq(S.getSettings().weightUnit, 'kg');
+      eq(S.counts(), { workouts: 1, metrics: 0 });
+    });
+    test('newer schema versions are refused on import', () => {
+      fresh();
+      const file = JSON.stringify({ app: 'fittrack', data: { schemaVersion: 99, modules: {} } });
+      throws(() => S.readBackup(file), /newer version/);
+    });
+
+    // ---------- export / import ----------
+
+    test('export → import round trip', () => {
+      fresh();
+      S.add('workouts', { date: '2026-09-20', title: 'Push', exercises: [{ name: 'Bench', sets: [{ reps: 8, weight: 80, done: true }] }] });
+      S.updateSettings({ weightUnit: 'lb' });
+      const json = S.exportData();
+      const before = S.list('workouts');
+
+      const b2 = memoryBackend();
+      S.init({ backend: b2 });
+      const backup = S.readBackup(json);
+      eq(backup.counts, { workouts: 1, metrics: 0 });
+      S.replaceAll(backup.data);
+      eq(S.list('workouts'), before);
+      eq(S.getSettings().weightUnit, 'lb');
+      assert(S.getMeta().lastExportAt, 'lastExportAt');
+    });
+    test('import rejects bad files', () => {
+      fresh();
+      throws(() => S.readBackup('nope'), /not valid JSON/);
+      throws(() => S.readBackup('{"hello":1}'), /not a FitTrack backup/);
+      const bad = entries => JSON.stringify({ app: 'fittrack', data: { schemaVersion: 1, modules: { workouts: { items: [], entries } } } });
+      throws(() => S.readBackup(bad([{ id: 'a', date: 'yesterday' }])), /invalid date/);
+      throws(() => S.readBackup(bad([{ id: 'a', date: '2026-01-01' }, { id: 'a', date: '2026-01-02' }])), /duplicate id/);
+      throws(() => S.readBackup(bad([{ date: '2026-01-01' }])), /no id/);
+    });
+    test('readBackup does not change current data', () => {
+      fresh();
+      S.add('workouts', { date: '2026-09-20' });
+      S.readBackup(JSON.stringify({ app: 'fittrack', data: { schemaVersion: 1, modules: {} } }));
+      eq(S.list('workouts').length, 1);
+    });
+    test('import keeps a safety copy that can be restored', () => {
+      fresh();
+      const original = S.add('workouts', { date: '2026-09-20', title: 'Original' });
+      const backup = S.readBackup(JSON.stringify({ app: 'fittrack', data: { schemaVersion: 1, modules: {} } }));
+      S.replaceAll(backup.data);
+      eq(S.list('workouts'), []);
+      assert(S.hasPreImportBackup(), 'has backup');
+      S.restorePreImportBackup();
+      eq(S.get('workouts', original.id).title, 'Original');
+      assert(!S.hasPreImportBackup(), 'backup consumed');
+    });
+    test('sections from newer app versions survive import and export', () => {
+      fresh();
+      const file = JSON.stringify({ app: 'fittrack', data: { schemaVersion: 1, modules: { future: { items: [], entries: [{ id: 'f', date: '2026-01-01', x: 1 }] } } } });
+      S.replaceAll(S.readBackup(file).data);
+      eq(JSON.parse(S.exportData()).data.modules.future.entries[0].x, 1);
+    });
+
+    // ---------- report ----------
+
+    const failed = results.filter(r => !r.ok).length;
+    document.getElementById('summary').textContent = failed ? `${failed} of ${results.length} failed` : `All ${results.length} tests passed`;
+    document.getElementById('summary').className = failed ? 'fail' : 'pass';
+    document.getElementById('results').replaceChildren(...results.map(r => {
+      const li = document.createElement('li');
+      li.className = r.ok ? 'pass' : 'fail';
+      li.textContent = (r.ok ? '✓ ' : '✗ ') + r.name + (r.ok ? '' : ' — ' + r.message);
+      return li;
+    }));
+  </script>
+</body>
+</html>
