@@ -23,13 +23,13 @@
   }
 
   // Which week of the 4-week cycle it is, or a prompt to set the start date.
-  function weekCard(date) {
+  function weekCard(date, onChange) {
     const info = plan.weekInfo(FT.storage.getSettings().planStart, date);
     if (!info) {
       return h('section', { class: 'card week-card' },
         h('h2', null, 'Track your 4-week cycle'),
         h('p', { class: 'muted small' }, 'Set when week 1 started and the app will show what to focus on each week, including the lighter week 4.'),
-        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => setPlanStart(date) }, 'Week 1 starts this week'));
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { if (setPlanStart(date) && onChange) onChange(); } }, 'Week 1 starts this week'));
     }
     if (info.upcoming) {
       return h('section', { class: 'card week-card' },
@@ -43,13 +43,20 @@
       h('p', { class: 'small' }, info.todo));
   }
 
-  function exerciseItem(ex, week) {
-    return h('li', null,
-      h('details', { class: 'ex-item' },
-        h('summary', null,
-          h('span', { class: 'ex-name' }, ex.name),
-          h('span', { class: 'ex-target' }, plan.targetText(ex, week))),
-        h('p', { class: 'ex-how' }, ex.how)));
+  // With a tracker ({ done: Set, toggle(name) }) each exercise gets a tick button on its left.
+  function exerciseItem(ex, week, tracker) {
+    const details = h('details', { class: 'ex-item' },
+      h('summary', null,
+        h('span', { class: 'ex-name' }, ex.name),
+        h('span', { class: 'ex-target' }, plan.targetText(ex, week))),
+      h('p', { class: 'ex-how' }, ex.how));
+    if (!tracker) return h('li', null, details);
+    return h('li', { class: 'ex-row', dataset: { exercise: ex.name } },
+      h('button', {
+        class: 'tick', type: 'button', 'aria-pressed': 'false', 'aria-label': `Mark ${ex.name} as done`,
+        onclick: () => tracker.toggle(ex.name)
+      }, h('span', { class: 'tick-box' }, FT.ui.icon('check'))),
+      details);
   }
 
   function warmupItem(w) {
@@ -65,8 +72,8 @@
             h('p', { class: 'ex-how' }, step.how))))));
   }
 
-  // Warm-up and exercises for a day. `week` is a weekInfo result, or null.
-  function dayDetails(key, week) {
+  // Warm-up and exercises for a day. `week` is a weekInfo result, or null; `tracker` is optional (see exerciseItem).
+  function dayDetails(key, week, tracker) {
     const day = plan.DAYS[key];
     const warmups = plan.warmupsFor(key);
     return h('div', { class: 'stack' },
@@ -76,7 +83,7 @@
         h('ul', { class: 'ex-list' }, warmups.map(warmupItem))),
       day.exercises.length > 0 && h('section', null,
         h('h2', { class: 'list-heading' }, 'Main work'),
-        h('ul', { class: 'ex-list' }, day.exercises.map(ex => exerciseItem(ex, week)))));
+        h('ul', { class: 'ex-list' }, day.exercises.map(ex => exerciseItem(ex, week, tracker)))));
   }
 
   FT.planView = { chip, longDate, setPlanStart, weekCard, dayDetails };
