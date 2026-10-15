@@ -31,7 +31,7 @@
     return {
       schemaVersion: FT.migrations.CURRENT_VERSION,
       meta: { createdAt: t, updatedAt: t, lastExportAt: null },
-      settings: { weightUnit: 'kg' },
+      settings: { weightUnit: 'kg', planStart: null }, // planStart: Monday (YYYY-MM-DD) of week 1 of the training plan
       modules: {}
     };
   }
