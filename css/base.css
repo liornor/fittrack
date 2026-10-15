@@ -7,6 +7,7 @@
   --border: #d9dde3;
   --accent: #2563eb;
   --accent-text: #ffffff;
+  --accent-soft: #e0eaff;
   --success: #15803d;
   --success-text: #ffffff;
   --success-soft: #dcfce7;
@@ -41,6 +42,7 @@
     --border: #2e333c;
     --accent: #6b97ff;
     --accent-text: #0b1020;
+    --accent-soft: #1c2845;
     --success: #4ade80;
     --success-text: #052e14;
     --success-soft: #14301f;

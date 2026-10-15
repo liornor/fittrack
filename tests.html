@@ -20,6 +20,7 @@
   <script src="js/core/dates.js"></script>
   <script src="js/core/migrations.js"></script>
   <script src="js/core/storage.js"></script>
+  <script src="js/data/plan.js"></script>
   <script>
     'use strict';
     const FT = window.FitTrack;
@@ -251,6 +252,101 @@
       const file = JSON.stringify({ app: 'fittrack', data: { schemaVersion: 1, modules: { future: { items: [], entries: [{ id: 'f', date: '2026-01-01', x: 1 }] } } } });
       S.replaceAll(S.readBackup(file).data);
       eq(JSON.parse(S.exportData()).data.modules.future.entries[0].x, 1);
+    });
+
+    // ---------- training plan ----------
+
+    const P = FT.plan;
+
+    test('dayKey maps dates to weekdays, Sunday last', () => {
+      eq(P.dayKey('2026-10-12'), 'mon');
+      eq(P.dayKey('2026-10-15'), 'thu');
+      eq(P.dayKey('2026-10-17'), 'sat');
+      eq(P.dayKey('2026-10-18'), 'sun');
+    });
+    test('mondayOf snaps back to the Monday of the same week', () => {
+      eq(P.mondayOf('2026-10-12'), '2026-10-12');
+      eq(P.mondayOf('2026-10-15'), '2026-10-12');
+      eq(P.mondayOf('2026-10-18'), '2026-10-12');
+      eq(P.mondayOf('2026-10-19'), '2026-10-19');
+      eq(P.mondayOf('2026-11-01'), '2026-10-26'); // across a month boundary
+    });
+    test('weekInfo is null without a start date', () => {
+      eq(P.weekInfo(null, '2026-10-15'), null);
+      eq(P.weekInfo('garbage', '2026-10-15'), null);
+    });
+    test('weekInfo counts weeks from the start Monday and cycles every 4', () => {
+      const w = (date) => P.weekInfo('2026-10-14', date); // a Wednesday: snaps to Mon 12 Oct
+      eq([w('2026-10-12').n, w('2026-10-18').n], [1, 1]);
+      eq(w('2026-10-19').n, 2);
+      eq(w('2026-11-02').n, 4);
+      assert(w('2026-11-02').deload && !w('2026-10-26').deload, 'deload only in week 4');
+      eq([w('2026-11-09').n, w('2026-11-09').block], [1, 2]);
+      eq(w('2026-10-15').block, 1);
+    });
+    test('weekInfo reports a start date in the future', () => {
+      const info = P.weekInfo('2026-10-19', '2026-10-15');
+      eq([info.upcoming, info.daysUntil], [true, 4]);
+    });
+    test('plan has all seven days; Sunday is rest, the rest have exercises', () => {
+      eq(P.DAY_KEYS.length, 7);
+      for (const key of P.DAY_KEYS) assert(P.DAYS[key] && P.DAY_NAMES[key], key);
+      eq(P.DAYS.sun.exercises.length, 0);
+      for (const key of ['mon', 'tue', 'wed', 'thu', 'fri', 'sat']) {
+        assert(P.DAYS[key].exercises.length >= 4, key + ' has exercises');
+        for (const ex of P.DAYS[key].exercises) assert(ex.name && ex.how && ex.sets >= 1, key + ': ' + ex.name);
+      }
+    });
+    test('warm-ups land on the days the plan names', () => {
+      eq(P.DAY_KEYS.filter(k => P.warmupsFor(k).some(w => w.name === 'Ankle mobility')), ['mon', 'thu', 'sat']);
+      eq(P.DAY_KEYS.filter(k => P.warmupsFor(k).some(w => w.name === 'Wrist warm-up')), ['tue', 'fri']);
+      eq(P.DAY_KEYS.filter(k => P.warmupsFor(k).some(w => w.name === 'Shoulder warm-up')), ['tue', 'wed', 'fri']);
+    });
+    test('targetText reads like the plan', () => {
+      const by = (key, name) => P.DAYS[key].exercises.find(e => e.name === name);
+      eq(P.targetText(by('mon', 'Bulgarian split squats')), '4 × 8–10 per leg');
+      eq(P.targetText(by('mon', 'Nordic curl negatives')), '3 × 5');
+      eq(P.targetText(by('tue', 'Wall walk to chest-to-wall hold')), '5 × 30 sec');
+      eq(P.targetText(by('wed', 'Push-ups')), '2 sets, near max');
+      eq(P.targetText(by('fri', 'Tripod to straddle press attempts')), '8–10 minutes');
+    });
+    test('deload week cuts sets to about 60% but leaves the timed block alone', () => {
+      const deload = P.weekInfo('2026-10-12', '2026-11-02');
+      const normal = P.weekInfo('2026-10-12', '2026-10-12');
+      const by = (key, name) => P.DAYS[key].exercises.find(e => e.name === name);
+      eq([P.setsFor(by('mon', 'Bulgarian split squats'), normal), P.setsFor(by('mon', 'Bulgarian split squats'), deload)], [4, 2]);
+      eq(P.setsFor(by('tue', 'Hollow body hold'), deload), 2);
+      eq(P.setsFor(by('wed', 'Push-ups'), deload), 1);
+      eq(P.setsFor(by('fri', 'Tripod to straddle press attempts'), deload), 1);
+      eq(P.targetText(by('mon', 'Bulgarian split squats'), deload), '2 × 8–10 per leg');
+      eq(P.setsFor(by('mon', 'Bulgarian split squats'), null), 4);
+    });
+    test('toWorkout builds a loggable entry that the storage layer accepts', () => {
+      fresh();
+      const w = P.toWorkout('tue', '2026-10-13', null);
+      eq([w.title, w.date, w.exercises.length], ['Handstand and core', '2026-10-13', 6]);
+      eq(w.exercises[0].name, 'Wall walk to chest-to-wall hold (sec)');
+      eq(w.exercises[0].sets, [0, 1, 2, 3, 4].map(() => ({ reps: 30, weight: null, done: false })));
+      eq(w.exercises.find(e => e.name === 'Hanging leg raises').sets.length, 3);
+      const saved = S.add('workouts', w);
+      eq(S.get('workouts', saved.id).exercises.length, 6);
+    });
+    test('toWorkout handles near-max and timed-block exercises and deload volume', () => {
+      const wed = P.toWorkout('wed', '2026-10-14', null);
+      eq(wed.exercises.find(e => e.name === 'Push-ups').sets, [{ reps: null, weight: null, done: false }, { reps: null, weight: null, done: false }]);
+      const fri = P.toWorkout('fri', '2026-10-16', P.weekInfo('2026-10-12', '2026-11-02'));
+      const block = fri.exercises.find(e => e.name === 'Tripod to straddle press attempts (min)');
+      eq(block.sets, [{ reps: 8, weight: null, done: false }]);
+      eq(fri.exercises.find(e => e.name === 'Feet-elevated pike push-ups').sets.length, 2);
+    });
+    test('plan start date is saved in settings and survives export and import', () => {
+      fresh();
+      eq(S.getSettings().planStart, null);
+      S.updateSettings({ planStart: '2026-10-12' });
+      const json = S.exportData();
+      fresh();
+      S.replaceAll(S.readBackup(json).data);
+      eq(S.getSettings().planStart, '2026-10-12');
     });
 
     // ---------- report ----------

@@ -7,6 +7,8 @@
     back: svg('<path d="M15 18l-6-6 6-6"/>'),
     settings: svg('<path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/><path d="M18 6h2"/>'),
     dumbbell: svg('<path d="M6 7v10M18 7v10M3 9.5v5M21 9.5v5M6 12h12"/>'),
+    today: svg('<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'),
+    list: svg('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>'),
     plus: svg('<path d="M12 5v14M5 12h14"/>'),
     check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
     x: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
