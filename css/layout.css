@@ -27,7 +27,7 @@ main {
   max-width: 640px;
   margin: 0 auto;
   padding: var(--space-4) max(var(--space-4), env(safe-area-inset-right))
-    calc(var(--nav-h) + env(safe-area-inset-bottom) + 96px) max(var(--space-4), env(safe-area-inset-left));
+    calc(var(--nav-h) + env(safe-area-inset-bottom) + var(--space-5)) max(var(--space-4), env(safe-area-inset-left));
 }
 
 .bottom-nav {
@@ -61,28 +61,8 @@ main {
 .bottom-nav a[aria-current="page"] { color: var(--accent); }
 .bottom-nav .icon { width: 24px; height: 24px; }
 
-/* Primary action pinned above the tab bar, within thumb reach. */
-.sticky-action {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
-  z-index: 5;
-  padding: var(--space-5) var(--space-4) var(--space-3);
-  background: linear-gradient(transparent, var(--bg) 40%);
-  pointer-events: none;
-}
-
-.sticky-action .btn {
-  display: flex;
-  max-width: 608px;
-  margin: 0 auto;
-  pointer-events: auto;
-}
-
-/* On Android the keyboard shrinks the viewport, which would push fixed bars
-   over the field being typed in. Hide them while typing. */
-body:has(input:focus, textarea:focus) .bottom-nav,
-body:has(input:focus, textarea:focus) .sticky-action {
+/* On Android the keyboard shrinks the viewport, which would push the fixed bar
+   over the field being typed in. Hide it while typing. */
+body:has(input:focus, textarea:focus) .bottom-nav {
   display: none;
 }

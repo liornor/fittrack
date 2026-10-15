@@ -190,27 +190,8 @@
     return `${sets} × ${range(ex.reps)}${ex.unit === 'sec' ? ' sec' : ''}${ex.per ? ' per ' + ex.per : ''}`;
   }
 
-  // A workout-log entry for a day, ready to save: planned sets with the low end of each rep range.
-  // Timed exercises log seconds (or minutes) in the reps column, so their names say so.
-  function toWorkout(key, dateString, week) {
-    const day = DAYS[key];
-    return {
-      date: dateString,
-      title: day.focus,
-      notes: '',
-      exercises: day.exercises.map(ex => {
-        const unitLabel = ex.kind === 'block' ? ' (min)' : ex.unit === 'sec' ? ' (sec)' : '';
-        const reps = ex.reps ? ex.reps[0] : null;
-        return {
-          name: ex.name + unitLabel,
-          sets: Array.from({ length: setsFor(ex, week) }, () => ({ reps, weight: null, done: false }))
-        };
-      })
-    };
-  }
-
   FT.plan = {
     DAY_KEYS, DAY_NAMES, DAYS, WARMUPS, WEEKS, GUIDELINES, PROGRESSION, TEST_WEEK, NOTES, CYCLE_WEEKS,
-    dayKey, addDays, mondayOf, weekInfo, warmupsFor, setsFor, targetText, toWorkout
+    dayKey, addDays, mondayOf, weekInfo, warmupsFor, setsFor, targetText
   };
 })(window.FitTrack = window.FitTrack || {});

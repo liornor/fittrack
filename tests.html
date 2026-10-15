@@ -321,24 +321,6 @@
       eq(P.targetText(by('mon', 'Bulgarian split squats'), deload), '2 × 8–10 per leg');
       eq(P.setsFor(by('mon', 'Bulgarian split squats'), null), 4);
     });
-    test('toWorkout builds a loggable entry that the storage layer accepts', () => {
-      fresh();
-      const w = P.toWorkout('tue', '2026-10-13', null);
-      eq([w.title, w.date, w.exercises.length], ['Handstand and core', '2026-10-13', 6]);
-      eq(w.exercises[0].name, 'Wall walk to chest-to-wall hold (sec)');
-      eq(w.exercises[0].sets, [0, 1, 2, 3, 4].map(() => ({ reps: 30, weight: null, done: false })));
-      eq(w.exercises.find(e => e.name === 'Hanging leg raises').sets.length, 3);
-      const saved = S.add('workouts', w);
-      eq(S.get('workouts', saved.id).exercises.length, 6);
-    });
-    test('toWorkout handles near-max and timed-block exercises and deload volume', () => {
-      const wed = P.toWorkout('wed', '2026-10-14', null);
-      eq(wed.exercises.find(e => e.name === 'Push-ups').sets, [{ reps: null, weight: null, done: false }, { reps: null, weight: null, done: false }]);
-      const fri = P.toWorkout('fri', '2026-10-16', P.weekInfo('2026-10-12', '2026-11-02'));
-      const block = fri.exercises.find(e => e.name === 'Tripod to straddle press attempts (min)');
-      eq(block.sets, [{ reps: 8, weight: null, done: false }]);
-      eq(fri.exercises.find(e => e.name === 'Feet-elevated pike push-ups').sets.length, 2);
-    });
     test('plan start date is saved in settings and survives export and import', () => {
       fresh();
       eq(S.getSettings().planStart, null);
